@@ -65,7 +65,10 @@ func handleConnection(conn net.Conn) {
 			last3Bytes = buffer[mLen-3:]
 		}
 	}
-	fmt.Println(sb.String())
+	requestHeaders := sb.String()
+	requestMethod := requestHeaders[:strings.Index(requestHeaders, " ")+1]
+
+	fmt.Printf("Request method: %s\n", requestMethod)
 
 	conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello World!"))
 }
