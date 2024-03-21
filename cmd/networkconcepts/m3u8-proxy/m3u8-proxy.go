@@ -41,7 +41,7 @@ func handleTsChunkProxy(targetURL string, w http.ResponseWriter) {
 		return
 	}
 
-	strippedData := pngData[91:]
+	strippedData := pngData[96:]
 
 	// 4. Return the modified content
 	w.Header().Set("Content-Type", "video/MP2T")
