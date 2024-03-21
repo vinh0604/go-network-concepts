@@ -36,7 +36,7 @@ func handleTsChunkProxy(targetURL string, w http.ResponseWriter) {
 		return
 	}
 
-	if len(pngData) <= 91 {
+	if len(pngData) <= 96 {
 		http.Error(w, "PNG data is too short", http.StatusBadRequest)
 		return
 	}
