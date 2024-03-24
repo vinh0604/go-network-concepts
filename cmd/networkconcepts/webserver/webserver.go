@@ -66,9 +66,46 @@ func handleConnection(conn net.Conn) {
 		}
 	}
 	requestHeaders := sb.String()
-	requestMethod := requestHeaders[:strings.Index(requestHeaders, " ")+1]
-
+	var firstHeaderLine = strings.Split(requestHeaders, "\r\n")[0]
+	requestMethod := firstHeaderLine[:strings.Index(firstHeaderLine, " ")+1]
 	fmt.Printf("Request method: %s\n", requestMethod)
 
-	conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello World!"))
+	var requestPath = firstHeaderLine[strings.Index(firstHeaderLine, " ")+1 : strings.LastIndex(firstHeaderLine, " ")]
+	var pathComponents = strings.Split(requestPath, "/")
+	var filePath = pathComponents[len(pathComponents)-1]
+
+	var errorMessage string
+	var responseCode string
+	var contentType string
+	var responseBody string
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		errorMessage = fmt.Sprintf("File not found: %s", filePath)
+		responseCode = "404 Not Found"
+	} else if err != nil {
+		errorMessage = fmt.Sprintf("Internal Server Error: %s", err.Error())
+		responseCode = "500 Internal Server Error"
+	} else {
+		var content, err = os.ReadFile(filePath)
+		if err != nil {
+			errorMessage = fmt.Sprintf("Internal Server Error: %s", err.Error())
+			responseCode = "500 Internal Server Error"
+		} else {
+			if strings.HasSuffix(filePath, ".html") {
+				contentType = "text/html"
+				responseBody = string(content)
+			} else if strings.HasSuffix(filePath, ".txt") {
+				contentType = "text/plain"
+				responseBody = string(content)
+			} else {
+				errorMessage = fmt.Sprintf("File content is not supported: %s", filePath)
+				responseCode = "400 Bad Request"
+			}
+		}
+	}
+
+	if errorMessage != "" {
+		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", responseCode, len(errorMessage), errorMessage)))
+	} else {
+		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n%s", contentType, len(responseBody), responseBody)))
+	}
 }
