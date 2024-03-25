@@ -77,7 +77,7 @@ func handleConnection(conn net.Conn) {
 	var errorMessage string
 	var responseCode string
 	var contentType string
-	var responseBody string
+	var responseBody []byte
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		errorMessage = fmt.Sprintf("File not found: %s", filePath)
 		responseCode = "404 Not Found"
@@ -92,10 +92,10 @@ func handleConnection(conn net.Conn) {
 		} else {
 			if strings.HasSuffix(filePath, ".html") {
 				contentType = "text/html"
-				responseBody = string(content)
+				responseBody = content
 			} else if strings.HasSuffix(filePath, ".txt") {
 				contentType = "text/plain"
-				responseBody = string(content)
+				responseBody = content
 			} else {
 				errorMessage = fmt.Sprintf("File content is not supported: %s", filePath)
 				responseCode = "400 Bad Request"
@@ -104,8 +104,8 @@ func handleConnection(conn net.Conn) {
 	}
 
 	if errorMessage != "" {
-		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", responseCode, len(errorMessage), errorMessage)))
+		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", responseCode, len(errorMessage), errorMessage)))
 	} else {
-		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n%s", contentType, len(responseBody), responseBody)))
+		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: %s; charset=utf-8\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", contentType, len(responseBody), responseBody)))
 	}
 }
