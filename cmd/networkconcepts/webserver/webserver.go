@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -73,6 +74,11 @@ func handleConnection(conn net.Conn) {
 	var requestPath = firstHeaderLine[strings.Index(firstHeaderLine, " ")+1 : strings.LastIndex(firstHeaderLine, " ")]
 	var pathComponents = strings.Split(requestPath, "/")
 	var filePath = pathComponents[len(pathComponents)-1]
+	filePath, err := url.QueryUnescape(filePath)
+	if err != nil {
+		fmt.Printf("Error decoding URI: %v\n", err)
+	}
+	fmt.Printf("File requested: %s\n", filePath)
 
 	var errorMessage string
 	var responseCode string
@@ -90,11 +96,20 @@ func handleConnection(conn net.Conn) {
 			errorMessage = fmt.Sprintf("Internal Server Error: %s", err.Error())
 			responseCode = "500 Internal Server Error"
 		} else {
-			if strings.HasSuffix(filePath, ".html") {
-				contentType = "text/html"
+			if strings.HasSuffix(filePath, ".html") || strings.HasSuffix(filePath, ".htm") {
+				contentType = "text/html; charset=utf-8"
 				responseBody = content
 			} else if strings.HasSuffix(filePath, ".txt") {
-				contentType = "text/plain"
+				contentType = "text/plain; charset=utf-8"
+				responseBody = content
+			} else if strings.HasSuffix(filePath, ".jpg") {
+				contentType = "image/jpeg"
+				responseBody = content
+			} else if strings.HasSuffix(filePath, ".png") {
+				contentType = "image/png"
+				responseBody = content
+			} else if strings.HasSuffix(filePath, ".pdf") {
+				contentType = "application/pdf"
 				responseBody = content
 			} else {
 				errorMessage = fmt.Sprintf("File content is not supported: %s", filePath)
@@ -106,6 +121,6 @@ func handleConnection(conn net.Conn) {
 	if errorMessage != "" {
 		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", responseCode, len(errorMessage), errorMessage)))
 	} else {
-		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: %s; charset=utf-8\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", contentType, len(responseBody), responseBody)))
+		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", contentType, len(responseBody), responseBody)))
 	}
 }
