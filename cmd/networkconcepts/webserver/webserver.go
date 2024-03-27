@@ -2,20 +2,40 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
 func main() {
-	args := os.Args[1:]
-
-	port := 8080
 	var err error
+	currDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	var rootDir string
+	flag.StringVar(&rootDir, "d", currDir, "Serving directory")
+	flag.Parse()
+	fmt.Printf("Serving directory: %s\n", rootDir)
+	if rootInfo, err := os.Stat(rootDir); os.IsNotExist(err) {
+		panic(err)
+	} else if !rootInfo.IsDir() {
+		panic("Root path is not a directory")
+	}
+	rootDir, err = filepath.Abs(rootDir)
+	if err != nil {
+		panic(err)
+	}
+
+	args := flag.Args()
+	port := 8080
 	if len(args) > 1 {
 		port, err = strconv.Atoi(args[0])
 		if err != nil {
@@ -36,11 +56,11 @@ func main() {
 		}
 
 		// Handle the connection in a new goroutine
-		go handleConnection(conn)
+		go handleConnection(conn, rootDir)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, rootDir string) {
 	defer conn.Close()
 	fmt.Printf("Remote Address: %s %s\n", conn.RemoteAddr().Network(), conn.RemoteAddr().String())
 	fmt.Printf("Local Address: %s %s\n", conn.LocalAddr().Network(), conn.LocalAddr().String())
@@ -72,11 +92,13 @@ func handleConnection(conn net.Conn) {
 	fmt.Printf("Request method: %s\n", requestMethod)
 
 	var requestPath = firstHeaderLine[strings.Index(firstHeaderLine, " ")+1 : strings.LastIndex(firstHeaderLine, " ")]
-	var pathComponents = strings.Split(requestPath, "/")
-	var filePath = pathComponents[len(pathComponents)-1]
-	filePath, err := url.QueryUnescape(filePath)
+	filePath, err := url.QueryUnescape(requestPath[1:])
+
 	if err != nil {
 		fmt.Printf("Error decoding URI: %v\n", err)
+	}
+	if filePath == "" {
+		filePath = "."
 	}
 	fmt.Printf("File requested: %s\n", filePath)
 
@@ -84,43 +106,83 @@ func handleConnection(conn net.Conn) {
 	var responseCode string
 	var contentType string
 	var responseBody []byte
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	filePath, err = filepath.Abs(filePath)
+	if err != nil {
+		errorMessage = fmt.Sprintf("Internal Server Error: %s", err.Error())
+		responseCode = "500 Internal Server Error"
+	} else if !strings.HasPrefix(filePath, rootDir) {
+		errorMessage = fmt.Sprintf("Access denied: %s", filePath)
+		responseCode = "403 Forbidden"
+	} else if fileInfo, err := os.Stat(filePath); os.IsNotExist(err) {
 		errorMessage = fmt.Sprintf("File not found: %s", filePath)
 		responseCode = "404 Not Found"
 	} else if err != nil {
 		errorMessage = fmt.Sprintf("Internal Server Error: %s", err.Error())
 		responseCode = "500 Internal Server Error"
 	} else {
-		var content, err = os.ReadFile(filePath)
-		if err != nil {
-			errorMessage = fmt.Sprintf("Internal Server Error: %s", err.Error())
-			responseCode = "500 Internal Server Error"
+		if fileInfo.IsDir() {
+			renderDir(rootDir, filePath, &responseBody, &errorMessage, &responseCode, &contentType)
 		} else {
-			if strings.HasSuffix(filePath, ".html") || strings.HasSuffix(filePath, ".htm") {
-				contentType = "text/html; charset=utf-8"
-				responseBody = content
-			} else if strings.HasSuffix(filePath, ".txt") {
-				contentType = "text/plain; charset=utf-8"
-				responseBody = content
-			} else if strings.HasSuffix(filePath, ".jpg") {
-				contentType = "image/jpeg"
-				responseBody = content
-			} else if strings.HasSuffix(filePath, ".png") {
-				contentType = "image/png"
-				responseBody = content
-			} else if strings.HasSuffix(filePath, ".pdf") {
-				contentType = "application/pdf"
-				responseBody = content
-			} else {
-				errorMessage = fmt.Sprintf("File content is not supported: %s", filePath)
-				responseCode = "400 Bad Request"
-			}
+			renderFile(filePath, &responseBody, &errorMessage, &responseCode, &contentType)
 		}
+
 	}
 
 	if errorMessage != "" {
 		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", responseCode, len(errorMessage), errorMessage)))
 	} else {
 		conn.Write([]byte(fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", contentType, len(responseBody), responseBody)))
+	}
+}
+
+func renderDir(rootDir string, dirPath string, responseBody *[]byte, errorMessage *string, responseCode *string, contentType *string) {
+	relPath, err := filepath.Rel(rootDir, dirPath)
+	if err != nil {
+		*errorMessage = fmt.Sprintf("Internal Server Error: %s", err.Error())
+		*responseCode = "500 Internal Server Error"
+		return
+	}
+	files, err := os.ReadDir(dirPath)
+	if err != nil {
+		*errorMessage = fmt.Sprintf("Internal Server Error: %s", err.Error())
+		*responseCode = "500 Internal Server Error"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("<html><head><title>Directory Listing</title></head><body><h1>Directory Listing</h1><ul>")
+	for _, file := range files {
+		sb.WriteString(fmt.Sprintf("<li><a href=\"/%s/%s\">%s</a></li>", relPath, file.Name(), file.Name()))
+	}
+
+	sb.WriteString("</ul></body></html>")
+	*contentType = "text/html; charset=utf-8"
+	*responseBody = []byte(sb.String())
+}
+
+func renderFile(filePath string, responseBody *[]byte, errorMessage *string, responseCode *string, contentType *string) {
+	var content, err = os.ReadFile(filePath)
+	if err != nil {
+		*errorMessage = fmt.Sprintf("Internal Server Error: %s", err.Error())
+		*responseCode = "500 Internal Server Error"
+	} else {
+		if strings.HasSuffix(filePath, ".html") || strings.HasSuffix(filePath, ".htm") {
+			*contentType = "text/html; charset=utf-8"
+			*responseBody = content
+		} else if strings.HasSuffix(filePath, ".txt") || strings.HasSuffix(filePath, ".log") || strings.HasSuffix(filePath, ".csv") || strings.HasSuffix(filePath, ".md") {
+			*contentType = "text/plain; charset=utf-8"
+			*responseBody = content
+		} else if strings.HasSuffix(filePath, ".jpg") {
+			*contentType = "image/jpeg"
+			*responseBody = content
+		} else if strings.HasSuffix(filePath, ".png") {
+			*contentType = "image/png"
+			*responseBody = content
+		} else if strings.HasSuffix(filePath, ".pdf") {
+			*contentType = "application/pdf"
+			*responseBody = content
+		} else {
+			*errorMessage = fmt.Sprintf("File content is not supported: %s", filePath)
+			*responseCode = "400 Bad Request"
+		}
 	}
 }
