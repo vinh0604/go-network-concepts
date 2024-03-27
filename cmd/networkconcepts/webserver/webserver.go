@@ -97,9 +97,7 @@ func handleConnection(conn net.Conn, rootDir string) {
 	if err != nil {
 		fmt.Printf("Error decoding URI: %v\n", err)
 	}
-	if filePath == "" {
-		filePath = "."
-	}
+	filePath = filepath.Join(rootDir, filePath)
 	fmt.Printf("File requested: %s\n", filePath)
 
 	var errorMessage string
