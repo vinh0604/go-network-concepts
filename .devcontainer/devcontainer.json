@@ -20,12 +20,14 @@
 			"extensions": [
 				"github.copilot",
 				"github.copilot-chat",
-				"esbenp.prettier-vscode"
+				"esbenp.prettier-vscode",
+				"skellock.just",
 			]
 		}
 	},
 	"features": {
-		"ghcr.io/devcontainers/features/python:1": {}
+		"ghcr.io/devcontainers/features/python:1": {},
+		"ghcr.io/guiyomh/features/just:0": {}
 	}
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
