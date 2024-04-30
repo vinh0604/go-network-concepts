@@ -44,3 +44,52 @@ func ipInt32ToBytes(ipInt32 uint32) []byte {
 func ipBytesToString(ipBytes []byte) string {
 	return strconv.Itoa(int(ipBytes[0])) + "." + strconv.Itoa(int(ipBytes[1])) + "." + strconv.Itoa(int(ipBytes[2])) + "." + strconv.Itoa(int(ipBytes[3]))
 }
+
+func computeSubnetMask(notation uint8) ([]byte, error) {
+	if notation > 32 {
+		return nil, errors.New("invalid subnet notation")
+	}
+
+	runOfOne := (1 << notation) - 1
+	runOfOne <<= 32 - notation
+	return []byte{
+		byte(runOfOne >> 24),
+		byte(runOfOne >> 16),
+		byte(runOfOne >> 8),
+		byte(runOfOne),
+	}, nil
+}
+
+func getSubnet(ipBytes []byte, notation uint8) ([]byte, error) {
+	if len(ipBytes) != 4 {
+		return nil, errors.New("invalid IP address")
+	}
+	subnetMask, err := computeSubnetMask(notation)
+	if err != nil {
+		return nil, err
+	}
+
+	return []byte{
+		ipBytes[0] & subnetMask[0],
+		ipBytes[1] & subnetMask[1],
+		ipBytes[2] & subnetMask[2],
+		ipBytes[3] & subnetMask[3],
+	}, nil
+}
+
+func getHostBits(ipBytes []byte, notation uint8) ([]byte, error) {
+	if len(ipBytes) != 4 {
+		return nil, errors.New("invalid IP address")
+	}
+	subnetMask, err := computeSubnetMask(notation)
+	if err != nil {
+		return nil, err
+	}
+
+	return []byte{
+		ipBytes[0] & ^subnetMask[0],
+		ipBytes[1] & ^subnetMask[1],
+		ipBytes[2] & ^subnetMask[2],
+		ipBytes[3] & ^subnetMask[3],
+	}, nil
+}
