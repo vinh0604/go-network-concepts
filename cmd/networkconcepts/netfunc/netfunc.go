@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -60,7 +61,7 @@ func computeSubnetMask(notation uint8) ([]byte, error) {
 	}, nil
 }
 
-func getSubnet(ipBytes []byte, notation uint8) ([]byte, error) {
+func getNetworkNumber(ipBytes []byte, notation uint8) ([]byte, error) {
 	if len(ipBytes) != 4 {
 		return nil, errors.New("invalid IP address")
 	}
@@ -92,4 +93,47 @@ func getHostBits(ipBytes []byte, notation uint8) ([]byte, error) {
 		ipBytes[2] & ^subnetMask[2],
 		ipBytes[3] & ^subnetMask[3],
 	}, nil
+}
+
+func ipsSameSubnet(ip1 string, ip2 string, subnetNotation uint8) (bool, error) {
+	ip1Bytes, err := ipStringToBytes(ip1)
+	if err != nil {
+		return false, err
+	}
+
+	ip2Bytes, err := ipStringToBytes(ip2)
+	if err != nil {
+		return false, err
+	}
+
+	network1, err := getNetworkNumber(ip1Bytes, subnetNotation)
+	if err != nil {
+		return false, err
+	}
+
+	network2, err := getNetworkNumber(ip2Bytes, subnetNotation)
+	if err != nil {
+		return false, err
+	}
+
+	return slices.Equal(network1, network2), nil
+}
+
+type RouterInfo struct {
+	netmaskNotation uint8
+}
+
+func routerForIp(routers map[string]RouterInfo, ip string) (string, error) {
+	_, err := ipStringToBytes(ip)
+	if err != nil {
+		return "", err
+	}
+
+	for routerIp, info := range routers {
+		if result, _ := ipsSameSubnet(ip, routerIp, info.netmaskNotation); result {
+			return routerIp, nil
+		}
+	}
+
+	return "", errors.New("no router found for IP")
 }

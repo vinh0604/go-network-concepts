@@ -61,12 +61,12 @@ func TestComputeSubnetMask_withInvalidNotation(t *testing.T) {
 	assert.Error(t, err, "Expected an error when computing an invalid subnet mask")
 }
 
-func TestGetSubnet(t *testing.T) {
-	result, err := getSubnet([]byte{198, 51, 100, 10}, 24)
+func TestGetNetworkNumber(t *testing.T) {
+	result, err := getNetworkNumber([]byte{198, 51, 100, 10}, 24)
 	assert.NoError(t, err, "Expected no error when getting a subnet")
 	assert.Equal(t, []byte{198, 51, 100, 0}, result, "Expected the correct subnet")
 
-	result, _ = getSubnet([]byte{198, 51, 100, 140}, 25)
+	result, _ = getNetworkNumber([]byte{198, 51, 100, 140}, 25)
 	assert.Equal(t, []byte{198, 51, 100, 128}, result, "Expected the correct subnet")
 }
 
@@ -77,4 +77,28 @@ func TestGetHostBits(t *testing.T) {
 
 	result, _ = getHostBits([]byte{198, 51, 100, 140}, 25)
 	assert.Equal(t, []byte{0, 0, 0, 12}, result, "Expected the correct subnet")
+}
+
+func TestIpsSameSubnet(t *testing.T) {
+	result, err := ipsSameSubnet("192.168.1.1", "192.168.1.3", 24)
+	assert.NoError(t, err, "Expected no error when checking if IPs are in the same subnet")
+	assert.True(t, result, "Expected the IPs to be in the same subnet")
+
+	result, _ = ipsSameSubnet("192.168.2.1", "192.168.1.3", 24)
+	assert.False(t, result, "Expected the IPs to be in the same subnet")
+}
+
+func TestRouterForIp(t *testing.T) {
+	routers := map[string]RouterInfo{
+		"10.34.166.1": RouterInfo{24},
+		"10.34.194.1": RouterInfo{24},
+		"10.34.98.1":  RouterInfo{24},
+	}
+
+	result, err := routerForIp(routers, "10.34.166.170")
+	assert.NoError(t, err, "Expected no error when getting the router for an IP")
+	assert.Equal(t, "10.34.166.1", result, "Expected the correct router")
+
+	_, err = routerForIp(routers, "10.35.166.170")
+	assert.Error(t, err, "Expected an error when getting the router for an IP")
 }
