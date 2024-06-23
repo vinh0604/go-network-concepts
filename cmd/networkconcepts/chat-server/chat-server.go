@@ -1,29 +1,21 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"strconv"
-	"strings"
 
 	"github.com/vinh0604/go-network-concepts/internal/chatmodels"
+	"github.com/vinh0604/go-network-concepts/internal/chatutils"
 )
-
-const PAYLOAD_LEN_SIZE = 2
 
 type clientInfo struct {
 	conn         *net.Conn
 	chatPayload  *chatmodels.Payload
 	disconnected bool
-}
-
-type chatBuffer struct {
-	bufLen int
-	buf    []byte
 }
 
 func main() {
@@ -44,6 +36,7 @@ func main() {
 	}
 	defer ln.Close()
 
+	clients := map[net.Conn]string{}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -54,7 +47,6 @@ func main() {
 		go handleConn(conn, clientCh)
 
 		go func() {
-			clients := map[net.Conn]string{}
 			for {
 				client := <-clientCh
 				if client.disconnected {
@@ -112,6 +104,7 @@ func relay(nick string, clientConn *net.Conn, clients *map[net.Conn]string, payl
 	outBytes = append(outBytes, jsonStr...)
 	for conn := range *clients {
 		if conn != *clientConn {
+			fmt.Printf("Relaying to %s\n", conn.RemoteAddr().String())
 			conn.Write(outBytes)
 		}
 	}
@@ -120,9 +113,9 @@ func relay(nick string, clientConn *net.Conn, clients *map[net.Conn]string, payl
 func handleConn(conn net.Conn, clientCh chan clientInfo) {
 	defer conn.Close()
 
-	chatBuf := chatBuffer{}
+	readBuf := chatutils.ReadBuffer{}
 	for {
-		payload, err := readNextMessage(conn, &chatBuf)
+		payload, err := chatutils.ReadNextMessage(conn, &readBuf)
 
 		if err != nil {
 			if err != io.EOF {
@@ -160,49 +153,4 @@ func handleConn(conn net.Conn, clientCh chan clientInfo) {
 			fmt.Printf("Client %s sent an unknown message type: %s\n", conn.RemoteAddr().String(), payload.MsgType)
 		}
 	}
-}
-
-func readNextMessage(conn net.Conn, chatBuf *chatBuffer) (*chatmodels.Payload, error) {
-	buf := make([]byte, 1024)
-	sb := &strings.Builder{}
-	var err error
-	mLen := chatBuf.bufLen
-	lenBytes := chatBuf.buf
-	bytesToRead := 0
-
-	for {
-		if mLen == 0 {
-			mLen, err = conn.Read(buf)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		if bytesToRead > 0 {
-			if mLen >= bytesToRead {
-				sb.Write(buf[:bytesToRead])
-				var payload chatmodels.Payload
-				json.Unmarshal([]byte(sb.String()), &payload)
-
-				chatBuf.bufLen = mLen - bytesToRead
-				chatBuf.buf = buf[bytesToRead:mLen]
-				return &payload, nil
-			} else {
-				sb.Write(buf[:mLen])
-				bytesToRead -= mLen
-				mLen = 0
-			}
-		} else if mLen+len(lenBytes) >= PAYLOAD_LEN_SIZE {
-			bytesToRead = int(binary.BigEndian.Uint16(append(lenBytes, buf[:PAYLOAD_LEN_SIZE-len(lenBytes)]...)))
-
-			buf = buf[PAYLOAD_LEN_SIZE-len(lenBytes):]
-			mLen -= PAYLOAD_LEN_SIZE - len(lenBytes)
-			lenBytes = []byte{}
-			continue
-		} else {
-			lenBytes = buf[:mLen]
-			mLen = 0
-		}
-	}
-
 }
