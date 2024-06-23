@@ -59,7 +59,7 @@ func main() {
 				client := <-clientCh
 				if client.disconnected {
 					if nick, ok := clients[*client.conn]; ok {
-						fmt.Printf("Client %s disconnected with nickname %s\n", (*client.conn).RemoteAddr().String(), nick)
+						fmt.Printf("Client %s (nick=%s) left.\n", (*client.conn).RemoteAddr().String(), nick)
 						delete(clients, *client.conn)
 					}
 					continue
@@ -67,6 +67,7 @@ func main() {
 
 				if client.chatPayload != nil {
 					if client.chatPayload.MsgType == chatmodels.MsgTypeHello {
+						fmt.Printf("Client %s (nick=%s) joined.\n", (*client.conn).RemoteAddr().String(), *client.chatPayload.Nick)
 						clients[*client.conn] = *client.chatPayload.Nick
 						announce := chatmodels.Payload{
 							MsgType: chatmodels.MsgTypeJoin,
@@ -80,6 +81,7 @@ func main() {
 							continue
 						}
 
+						fmt.Printf("Client %s (nick=%s) sent a message.\n", (*client.conn).RemoteAddr().String(), nick)
 						chat := chatmodels.Payload{
 							MsgType: chatmodels.MsgTypeChat,
 							Nick:    &nick,
@@ -90,8 +92,6 @@ func main() {
 						fmt.Printf("Client %s sent an unknown message type: %s\n", (*client.conn).RemoteAddr().String(), client.chatPayload.MsgType)
 					}
 				}
-
-				fmt.Printf("Client %s connected with nickname %s\n", (*client.conn).RemoteAddr().String(), *client.chatPayload.Nick)
 			}
 		}()
 	}
@@ -99,7 +99,7 @@ func main() {
 
 func relay(nick string, clientConn *net.Conn, clients *map[net.Conn]string, payload chatmodels.Payload) {
 	jsonStr, err := json.Marshal(payload)
-	if err == nil {
+	if err != nil {
 		fmt.Printf("Failed to relay %s message from %s: %s\n", payload.MsgType, nick, err)
 		return
 	}
@@ -118,9 +118,7 @@ func relay(nick string, clientConn *net.Conn, clients *map[net.Conn]string, payl
 }
 
 func handleConn(conn net.Conn, clientCh chan clientInfo) {
-	defer func() {
-		conn.Close()
-	}()
+	defer conn.Close()
 
 	chatBuf := chatBuffer{}
 	for {
@@ -150,8 +148,11 @@ func handleConn(conn net.Conn, clientCh chan clientInfo) {
 			}
 		} else if payload.MsgType == chatmodels.MsgTypeChat {
 			if payload.Msg != nil {
-				fmt.Printf("%s: %s\n", *payload.Nick, *payload.Msg)
-				// TODO: Broadcast the chat message to all clients
+				clientCh <- clientInfo{
+					conn:         &conn,
+					chatPayload:  payload,
+					disconnected: false,
+				}
 			} else {
 				fmt.Printf("Client %s sent a chat message without a message\n", conn.RemoteAddr().String())
 			}
@@ -184,7 +185,7 @@ func readNextMessage(conn net.Conn, chatBuf *chatBuffer) (*chatmodels.Payload, e
 				json.Unmarshal([]byte(sb.String()), &payload)
 
 				chatBuf.bufLen = mLen - bytesToRead
-				chatBuf.buf = buf[bytesToRead:]
+				chatBuf.buf = buf[bytesToRead:mLen]
 				return &payload, nil
 			} else {
 				sb.Write(buf[:mLen])

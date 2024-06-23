@@ -36,6 +36,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer sock.Close()
 
 	if slices.Contains(METHODS_WITH_PAYLOAD, method) && payload != "" {
 		sock.Write([]byte(
@@ -60,5 +61,4 @@ func main() {
 	}
 
 	fmt.Println(sb.String())
-	defer sock.Close()
 }
