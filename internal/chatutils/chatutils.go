@@ -70,3 +70,54 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+type ConnectionInfo struct {
+	conn net.Conn
+	nick string
+}
+
+type ConnectionManager struct {
+	addCh    chan ConnectionInfo
+	removeCh chan net.Conn
+	listCh   chan chan []ConnectionInfo
+}
+
+func NewConnectionManager() *ConnectionManager {
+	return &ConnectionManager{
+		addCh:    make(chan ConnectionInfo),
+		removeCh: make(chan net.Conn),
+		listCh:   make(chan chan []ConnectionInfo),
+	}
+}
+
+func (cm *ConnectionManager) Run() {
+	conns := make(map[net.Conn]string)
+	for {
+		select {
+		case connInfo := <-cm.addCh:
+			conns[connInfo.conn] = connInfo.nick
+		case conn := <-cm.removeCh:
+			delete(conns, conn)
+		case respCh := <-cm.listCh:
+			listResult := make([]ConnectionInfo, 0, len(conns))
+			for conn, nick := range conns {
+				listResult = append(listResult, ConnectionInfo{conn, nick})
+			}
+			respCh <- listResult
+		}
+	}
+}
+
+func (cm *ConnectionManager) Add(conn net.Conn, nick string) {
+	cm.addCh <- ConnectionInfo{conn, nick}
+}
+
+func (cm *ConnectionManager) Remove(conn net.Conn) {
+	cm.removeCh <- conn
+}
+
+func (cm *ConnectionManager) List() []ConnectionInfo {
+	respCh := make(chan []ConnectionInfo)
+	cm.listCh <- respCh
+	return <-respCh
+}
