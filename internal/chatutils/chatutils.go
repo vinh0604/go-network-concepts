@@ -72,8 +72,8 @@ func min(a, b int) int {
 }
 
 type ConnectionInfo struct {
-	conn net.Conn
-	nick string
+	Conn net.Conn
+	Nick string
 }
 
 type ConnectionManager struct {
@@ -84,13 +84,13 @@ type ConnectionManager struct {
 
 type removeRequest struct {
 	conn   net.Conn
-	respCh chan string
+	respCh chan *string
 }
 
 func NewConnectionManager() *ConnectionManager {
 	return &ConnectionManager{
 		addCh:    make(chan ConnectionInfo),
-		removeCh: make(chan net.Conn),
+		removeCh: make(chan removeRequest),
 		listCh:   make(chan chan []ConnectionInfo),
 	}
 }
@@ -100,14 +100,14 @@ func (cm *ConnectionManager) Run() {
 	for {
 		select {
 		case connInfo := <-cm.addCh:
-			conns[connInfo.conn] = connInfo.nick
+			conns[connInfo.Conn] = connInfo.Nick
 		case req := <-cm.removeCh:
 			nick, exists := conns[req.conn]
 			if exists {
 				delete(conns, req.conn)
-				req.respCh <- nick
+				req.respCh <- &nick
 			} else {
-				req.respCh <- ""
+				req.respCh <- nil
 			}
 		case respCh := <-cm.listCh:
 			listResult := make([]ConnectionInfo, 0, len(conns))
@@ -123,8 +123,8 @@ func (cm *ConnectionManager) Add(conn net.Conn, nick string) {
 	cm.addCh <- ConnectionInfo{conn, nick}
 }
 
-func (cm *ConnectionManager) Remove(conn net.Conn) string {
-	respCh := make(chan string)
+func (cm *ConnectionManager) Remove(conn net.Conn) *string {
+	respCh := make(chan *string)
 	cm.removeCh <- removeRequest{conn: conn, respCh: respCh}
 	return <-respCh
 }
