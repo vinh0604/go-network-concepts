@@ -151,7 +151,7 @@ func TestConnectionManager(t *testing.T) {
 
 	// Test Remove method
 	removedNick := cm.Remove(conn1)
-	assert.Equal("user1", removedNick, "Expected removed nick to be 'user1'")
+	assert.Equal("user1", *removedNick, "Expected removed nick to be 'user1'")
 	connections = cm.List()
 	assert.Len(connections, 1, "Expected 1 connection after removal")
 	assert.Contains(connections, ConnectionInfo{Conn: conn2, Nick: "user2"})
@@ -159,22 +159,22 @@ func TestConnectionManager(t *testing.T) {
 
 	// Test adding a connection with the same nick
 	conn3 := &net.TCPConn{}
-	cm.Add(conn3, "user2")
+	cm.Add(conn3, "user3")
 	connections = cm.List()
 	assert.Len(connections, 2, "Expected 2 connections")
 	assert.Contains(connections, ConnectionInfo{Conn: conn2, Nick: "user2"})
-	assert.Contains(connections, ConnectionInfo{Conn: conn3, Nick: "user2"})
+	assert.Contains(connections, ConnectionInfo{Conn: conn3, Nick: "user3"})
 
 	// Test removing a non-existent connection
 	nonExistentConn := &net.TCPConn{}
 	removedNick = cm.Remove(nonExistentConn)
-	assert.Equal("", removedNick, "Expected empty string for non-existent connection")
+	assert.Nil(removedNick, "Expected empty string for non-existent connection")
 	connections = cm.List()
 	assert.Len(connections, 2, "Expected no change in connections")
 
-	// Test Exist method
-	assert.True(cm.Exist(conn2), "Expected conn2 to exist")
-	assert.True(cm.Exist(conn3), "Expected conn3 to exist")
-	assert.False(cm.Exist(conn1), "Expected conn1 to not exist")
-	assert.False(cm.Exist(nonExistentConn), "Expected nonExistentConn to not exist")
+	// Test GetNick method
+	assert.Equal("user2", *cm.GetNick(conn2), "Expected conn2 to exist")
+	assert.Equal("user3", *cm.GetNick(conn3), "Expected conn3 to exist")
+	assert.Nil(cm.GetNick(conn1), "Expected conn1 to not exist")
+	assert.Nil(cm.GetNick(nonExistentConn), "Expected nonExistentConn to not exist")
 }

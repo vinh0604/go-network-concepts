@@ -36,7 +36,9 @@ func main() {
 	}
 	defer ln.Close()
 
-	clients := map[net.Conn]string{}
+	cm := chatutils.NewConnectionManager()
+	go cm.Run()
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -50,36 +52,38 @@ func main() {
 			for {
 				client := <-clientCh
 				if client.disconnected {
-					if nick, ok := clients[*client.conn]; ok {
-						fmt.Printf("Client %s (nick=%s) left.\n", (*client.conn).RemoteAddr().String(), nick)
-						delete(clients, *client.conn)
+					disconnectedNick := cm.Remove(conn)
+					if disconnectedNick != nil {
+						fmt.Printf("Client %s (nick=%s) left.\n", (*client.conn).RemoteAddr().String(), *disconnectedNick)
 					}
 					continue
 				}
 
 				if client.chatPayload != nil {
 					if client.chatPayload.MsgType == chatmodels.MsgTypeHello {
+						cm.Add(conn, *client.chatPayload.Nick)
 						fmt.Printf("Client %s (nick=%s) joined.\n", (*client.conn).RemoteAddr().String(), *client.chatPayload.Nick)
-						clients[*client.conn] = *client.chatPayload.Nick
 						announce := chatmodels.Payload{
 							MsgType: chatmodels.MsgTypeJoin,
 							Nick:    client.chatPayload.Nick,
 						}
-						go relay(*client.chatPayload.Nick, client.conn, &clients, announce)
+						conns := cm.List()
+						go relay(*client.chatPayload.Nick, *client.conn, conns, announce)
 					} else if client.chatPayload.MsgType == chatmodels.MsgTypeChat {
-						nick, ok := clients[*client.conn]
-						if !ok {
+						nick := cm.GetNick(*client.conn)
+						if nick == nil {
 							fmt.Printf("Client %s not registered\n", (*client.conn).RemoteAddr().String())
 							continue
 						}
 
-						fmt.Printf("Client %s (nick=%s) sent a message.\n", (*client.conn).RemoteAddr().String(), nick)
+						fmt.Printf("Client %s (nick=%s) sent a message.\n", (*client.conn).RemoteAddr().String(), *nick)
 						chat := chatmodels.Payload{
 							MsgType: chatmodels.MsgTypeChat,
-							Nick:    &nick,
+							Nick:    nick,
 							Msg:     client.chatPayload.Msg,
 						}
-						go relay(nick, client.conn, &clients, chat)
+						conns := cm.List()
+						go relay(*nick, *client.conn, conns, chat)
 					} else {
 						fmt.Printf("Client %s sent an unknown message type: %s\n", (*client.conn).RemoteAddr().String(), client.chatPayload.MsgType)
 					}
@@ -89,7 +93,7 @@ func main() {
 	}
 }
 
-func relay(nick string, clientConn *net.Conn, clients *map[net.Conn]string, payload chatmodels.Payload) {
+func relay(nick string, clientConn net.Conn, clients []chatutils.ConnectionInfo, payload chatmodels.Payload) {
 	jsonStr, err := json.Marshal(payload)
 	if err != nil {
 		fmt.Printf("Failed to relay %s message from %s: %s\n", payload.MsgType, nick, err)
@@ -102,10 +106,10 @@ func relay(nick string, clientConn *net.Conn, clients *map[net.Conn]string, payl
 		byte(payloadLen & 0xFF),
 	}
 	outBytes = append(outBytes, jsonStr...)
-	for conn := range *clients {
-		if conn != *clientConn {
-			fmt.Printf("Relaying to %s\n", conn.RemoteAddr().String())
-			conn.Write(outBytes)
+	for _, connInfo := range clients {
+		if connInfo.Conn != clientConn {
+			fmt.Printf("Relaying to %s\n", connInfo.Conn.RemoteAddr().String())
+			connInfo.Conn.Write(outBytes)
 		}
 	}
 }

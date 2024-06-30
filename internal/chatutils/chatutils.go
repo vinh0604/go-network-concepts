@@ -80,9 +80,15 @@ type ConnectionManager struct {
 	addCh    chan ConnectionInfo
 	removeCh chan removeRequest
 	listCh   chan chan []ConnectionInfo
+	existCh  chan existRequest
 }
 
 type removeRequest struct {
+	conn   net.Conn
+	respCh chan *string
+}
+
+type existRequest struct {
 	conn   net.Conn
 	respCh chan *string
 }
@@ -92,6 +98,7 @@ func NewConnectionManager() *ConnectionManager {
 		addCh:    make(chan ConnectionInfo),
 		removeCh: make(chan removeRequest),
 		listCh:   make(chan chan []ConnectionInfo),
+		existCh:  make(chan existRequest),
 	}
 }
 
@@ -115,6 +122,13 @@ func (cm *ConnectionManager) Run() {
 				listResult = append(listResult, ConnectionInfo{conn, nick})
 			}
 			respCh <- listResult
+		case req := <-cm.existCh:
+			nick, ok := conns[req.conn]
+			if !ok {
+				req.respCh <- nil
+			} else {
+				req.respCh <- &nick
+			}
 		}
 	}
 }
@@ -135,16 +149,8 @@ func (cm *ConnectionManager) List() []ConnectionInfo {
 	return <-respCh
 }
 
-func (cm *ConnectionManager) Exist(conn net.Conn) bool {
-	respCh := make(chan bool)
-	cm.listCh <- func(conns []ConnectionInfo) {
-		for _, c := range conns {
-			if c.Conn == conn {
-				respCh <- true
-				return
-			}
-		}
-		respCh <- false
-	}
+func (cm *ConnectionManager) GetNick(conn net.Conn) *string {
+	respCh := make(chan *string)
+	cm.existCh <- existRequest{conn: conn, respCh: respCh}
 	return <-respCh
 }
