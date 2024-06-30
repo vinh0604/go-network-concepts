@@ -52,6 +52,37 @@ func TestReadNextMessage(t *testing.T) {
 	assert.Equal(*testPayload.Msg, *receivedPayload.Msg, "Msg mismatch")
 }
 
+func TestReadNextMessageInvalidPayload(t *testing.T) {
+	assert := assert.New(t)
+
+	// Create a pipe for testing
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	// Invalid JSON payload
+	invalidPayload := []byte(`{"MsgType": "chat", "Nick": "TestUser", "Msg": "Hello, World!"`)
+
+	// Write the message to the pipe in a goroutine
+	go func() {
+		messageLen := uint16(len(invalidPayload))
+		message := make([]byte, 2+len(invalidPayload))
+		binary.BigEndian.PutUint16(message[:2], messageLen)
+		copy(message[2:], invalidPayload)
+
+		_, err := client.Write(message)
+		assert.NoError(err, "Failed to write to pipe")
+	}()
+
+	// Read the message using ReadNextMessage
+	readBuf := &ReadBuffer{}
+	receivedPayload, err := ReadNextMessage(server, readBuf)
+
+	// Check that an error was returned
+	assert.Error(err, "Expected an error for invalid JSON payload")
+	assert.Nil(receivedPayload, "Expected nil payload for invalid JSON")
+}
+
 // Helper function to create a pointer to a string
 func stringPtr(s string) *string {
 	return &s
