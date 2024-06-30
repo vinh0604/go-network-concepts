@@ -150,7 +150,8 @@ func TestConnectionManager(t *testing.T) {
 	assert.Contains(connections, ConnectionInfo{conn: conn2, nick: "user2"})
 
 	// Test Remove method
-	cm.Remove(conn1)
+	removedNick := cm.Remove(conn1)
+	assert.Equal("user1", removedNick, "Expected removed nick to be 'user1'")
 	connections = cm.List()
 	assert.Len(connections, 1, "Expected 1 connection after removal")
 	assert.Contains(connections, ConnectionInfo{conn: conn2, nick: "user2"})
@@ -166,7 +167,8 @@ func TestConnectionManager(t *testing.T) {
 
 	// Test removing a non-existent connection
 	nonExistentConn := &net.TCPConn{}
-	cm.Remove(nonExistentConn)
+	removedNick = cm.Remove(nonExistentConn)
+	assert.Equal("", removedNick, "Expected empty string for non-existent connection")
 	connections = cm.List()
 	assert.Len(connections, 2, "Expected no change in connections")
 }

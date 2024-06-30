@@ -78,8 +78,13 @@ type ConnectionInfo struct {
 
 type ConnectionManager struct {
 	addCh    chan ConnectionInfo
-	removeCh chan net.Conn
+	removeCh chan removeRequest
 	listCh   chan chan []ConnectionInfo
+}
+
+type removeRequest struct {
+	conn   net.Conn
+	respCh chan string
 }
 
 func NewConnectionManager() *ConnectionManager {
@@ -96,8 +101,14 @@ func (cm *ConnectionManager) Run() {
 		select {
 		case connInfo := <-cm.addCh:
 			conns[connInfo.conn] = connInfo.nick
-		case conn := <-cm.removeCh:
-			delete(conns, conn)
+		case req := <-cm.removeCh:
+			nick, exists := conns[req.conn]
+			if exists {
+				delete(conns, req.conn)
+				req.respCh <- nick
+			} else {
+				req.respCh <- ""
+			}
 		case respCh := <-cm.listCh:
 			listResult := make([]ConnectionInfo, 0, len(conns))
 			for conn, nick := range conns {
@@ -112,8 +123,10 @@ func (cm *ConnectionManager) Add(conn net.Conn, nick string) {
 	cm.addCh <- ConnectionInfo{conn, nick}
 }
 
-func (cm *ConnectionManager) Remove(conn net.Conn) {
-	cm.removeCh <- conn
+func (cm *ConnectionManager) Remove(conn net.Conn) string {
+	respCh := make(chan string)
+	cm.removeCh <- removeRequest{conn: conn, respCh: respCh}
+	return <-respCh
 }
 
 func (cm *ConnectionManager) List() []ConnectionInfo {
