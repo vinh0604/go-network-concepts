@@ -134,3 +134,17 @@ func (cm *ConnectionManager) List() []ConnectionInfo {
 	cm.listCh <- respCh
 	return <-respCh
 }
+
+func (cm *ConnectionManager) Exist(conn net.Conn) bool {
+	respCh := make(chan bool)
+	cm.listCh <- func(conns []ConnectionInfo) {
+		for _, c := range conns {
+			if c.Conn == conn {
+				respCh <- true
+				return
+			}
+		}
+		respCh <- false
+	}
+	return <-respCh
+}

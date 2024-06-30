@@ -171,4 +171,10 @@ func TestConnectionManager(t *testing.T) {
 	assert.Equal("", removedNick, "Expected empty string for non-existent connection")
 	connections = cm.List()
 	assert.Len(connections, 2, "Expected no change in connections")
+
+	// Test Exist method
+	assert.True(cm.Exist(conn2), "Expected conn2 to exist")
+	assert.True(cm.Exist(conn3), "Expected conn3 to exist")
+	assert.False(cm.Exist(conn1), "Expected conn1 to not exist")
+	assert.False(cm.Exist(nonExistentConn), "Expected nonExistentConn to not exist")
 }
