@@ -16,44 +16,57 @@ type ReadBuffer struct {
 }
 
 func ReadNextMessage(conn net.Conn, readBuf *ReadBuffer) (*chatmodels.Payload, error) {
-	buf := make([]byte, 1024)
-	sb := &strings.Builder{}
-	var err error
-	mLen := len(readBuf.bufferBytes)
-	lenBytes := readBuf.bufferBytes
-	bytesToRead := 0
+	messageBuffer := &strings.Builder{}
+	payloadLength, err := readPayloadLength(conn, readBuf)
+	if err != nil {
+		return nil, err
+	}
 
-	for {
-		if mLen == 0 {
-			mLen, err = conn.Read(buf)
-			if err != nil {
+	for messageBuffer.Len() < payloadLength {
+		if len(readBuf.bufferBytes) == 0 {
+			if err := readIntoBuffer(conn, readBuf); err != nil {
 				return nil, err
 			}
 		}
 
-		if bytesToRead > 0 {
-			if mLen >= bytesToRead {
-				sb.Write(buf[:bytesToRead])
-				var payload chatmodels.Payload
-				json.Unmarshal([]byte(sb.String()), &payload)
+		bytesToRead := min(payloadLength-messageBuffer.Len(), len(readBuf.bufferBytes))
+		messageBuffer.Write(readBuf.bufferBytes[:bytesToRead])
+		readBuf.bufferBytes = readBuf.bufferBytes[bytesToRead:]
+	}
 
-				readBuf.bufferBytes = buf[bytesToRead:mLen]
-				return &payload, nil
-			} else {
-				sb.Write(buf[:mLen])
-				bytesToRead -= mLen
-				mLen = 0
-			}
-		} else if mLen+len(lenBytes) >= payloadLenBytesSize {
-			bytesToRead = int(binary.BigEndian.Uint16(append(lenBytes, buf[:payloadLenBytesSize-len(lenBytes)]...)))
+	var payload chatmodels.Payload
+	if err := json.Unmarshal([]byte(messageBuffer.String()), &payload); err != nil {
+		return nil, err
+	}
 
-			buf = buf[payloadLenBytesSize-len(lenBytes):]
-			mLen -= payloadLenBytesSize - len(lenBytes)
-			lenBytes = []byte{}
-			continue
-		} else {
-			lenBytes = buf[:mLen]
-			mLen = 0
+	return &payload, nil
+}
+
+func readPayloadLength(conn net.Conn, readBuf *ReadBuffer) (int, error) {
+	for len(readBuf.bufferBytes) < payloadLenBytesSize {
+		if err := readIntoBuffer(conn, readBuf); err != nil {
+			return 0, err
 		}
 	}
+
+	payloadLength := int(binary.BigEndian.Uint16(readBuf.bufferBytes[:payloadLenBytesSize]))
+	readBuf.bufferBytes = readBuf.bufferBytes[payloadLenBytesSize:]
+	return payloadLength, nil
+}
+
+func readIntoBuffer(conn net.Conn, readBuf *ReadBuffer) error {
+	tempBuf := make([]byte, 1024)
+	n, err := conn.Read(tempBuf)
+	if err != nil {
+		return err
+	}
+	readBuf.bufferBytes = append(readBuf.bufferBytes, tempBuf[:n]...)
+	return nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
