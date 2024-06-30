@@ -6,10 +6,13 @@ import (
 	"net"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/vinh0604/go-network-concepts/internal/chatmodels"
 )
 
 func TestReadNextMessage(t *testing.T) {
+	assert := assert.New(t)
+
 	// Create a pipe for testing
 	client, server := net.Pipe()
 
@@ -22,9 +25,7 @@ func TestReadNextMessage(t *testing.T) {
 
 	// Marshal the payload
 	payloadBytes, err := json.Marshal(testPayload)
-	if err != nil {
-		t.Fatalf("Failed to marshal test payload: %v", err)
-	}
+	assert.NoError(err, "Failed to marshal test payload")
 
 	// Prepare the message with length prefix
 	messageLen := uint16(len(payloadBytes))
@@ -35,29 +36,19 @@ func TestReadNextMessage(t *testing.T) {
 	// Write the message to the pipe in a goroutine
 	go func() {
 		_, err := server.Write(message)
-		if err != nil {
-			t.Errorf("Failed to write to pipe: %v", err)
-		}
+		assert.NoError(err, "Failed to write to pipe")
 		server.Close()
 	}()
 
 	// Read the message using ReadNextMessage
 	readBuf := &ReadBuffer{}
 	receivedPayload, err := ReadNextMessage(client, readBuf)
-	if err != nil {
-		t.Fatalf("ReadNextMessage failed: %v", err)
-	}
+	assert.NoError(err, "ReadNextMessage failed")
 
 	// Compare the received payload with the original
-	if receivedPayload.MsgType != testPayload.MsgType {
-		t.Errorf("Expected MsgType %s, got %s", testPayload.MsgType, receivedPayload.MsgType)
-	}
-	if *receivedPayload.Nick != *testPayload.Nick {
-		t.Errorf("Expected Nick %s, got %s", *testPayload.Nick, *receivedPayload.Nick)
-	}
-	if *receivedPayload.Msg != *testPayload.Msg {
-		t.Errorf("Expected Msg %s, got %s", *testPayload.Msg, *receivedPayload.Msg)
-	}
+	assert.Equal(testPayload.MsgType, receivedPayload.MsgType, "MsgType mismatch")
+	assert.Equal(*testPayload.Nick, *receivedPayload.Nick, "Nick mismatch")
+	assert.Equal(*testPayload.Msg, *receivedPayload.Msg, "Msg mismatch")
 
 	client.Close()
 }
