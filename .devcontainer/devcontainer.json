@@ -12,7 +12,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "go version",
+	"postCreateCommand": "sh .devcontainer/post-create.sh",
 
 	// Configure tool-specific properties.
 	"customizations": {
@@ -21,7 +21,7 @@
 				"github.copilot",
 				"github.copilot-chat",
 				"esbenp.prettier-vscode",
-				"skellock.just",
+				"skellock.just"
 			]
 		}
 	},

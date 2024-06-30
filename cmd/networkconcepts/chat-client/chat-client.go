@@ -65,7 +65,7 @@ func main() {
 				case chatmodels.MsgTypeChat:
 					p.Send(recvMsg{msg: fmt.Sprint(*payload.Nick, ": ", *payload.Msg), isSys: false})
 				case chatmodels.MsgTypeJoin:
-					p.Send(recvMsg{msg: fmt.Sprint(*payload.Nick, " joined the chat"), isSys: true})
+					p.Send(recvMsg{msg: fmt.Sprint("[", *payload.Nick, " joined the chat]"), isSys: true})
 				default:
 					p.Send(errMsg{err: fmt.Errorf("unknown message type: %s", payload.MsgType)})
 				}

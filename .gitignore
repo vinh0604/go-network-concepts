@@ -14,3 +14,5 @@
 # Output directories
 /bin/
 /tmp/
+.aider*
+.anthropic_key
